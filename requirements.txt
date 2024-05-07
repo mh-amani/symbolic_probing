@@ -1,5 +1,5 @@
 # --------- pytorch --------- #
-torch>=2.0.0
+torch==2.0.1
 torchvision>=0.15.0
 lightning>=2.0.0
 torchmetrics>=0.11.4
@@ -22,4 +22,7 @@ pre-commit      # hooks for applying linters on commit
 rich            # beautiful text formatting in terminal
 pytest          # tests
 einops
+datasets
+transformer_lens
+zstandard
 # sh            # for running bash commands in some tests (linux/macos only)
