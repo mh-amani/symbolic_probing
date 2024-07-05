@@ -1,0 +1,7 @@
+_target_: src.data.read_activation_from_file_datamodule.ReadActivationFromFileDataModule
+format: one_file
+path: /dlabdata1/masani/symbolic_probing/data/activation_data/gelu-2l_blocks.1.hook_mlp_out
+batch_size: 128
+num_workers: 0
+pin_memory: false
+seed: 42

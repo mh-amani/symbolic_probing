@@ -277,8 +277,13 @@ if __name__ == "__main__":
     #         data = load_dataset(dataset_path, split=split, streaming=streaming)
     #         return
 
+<<<<<<< HEAD
     # def make_sentence_dataset(self, dataset_name: str, data_files: List, data_path: str = None, max_lines: int = 20_000, start_line: int = 0):
         # """Returns a dataset from the Huggingface Datasets library."""
+=======
+    def make_sentence_dataset(self, dataset_name: str, data_files: List, data_path: str = None, max_lines: int = 20_000, start_line: int = 0):
+        """Returns a dataset from the Huggingface Datasets library."""
+>>>>>>> c4b9670c3119ab8db266bc29e31cfaf801b2350d
         # if dataset_name == "EleutherAI/pile":
         #     if not os.path.exists(os.path.join(data_path, "pile0.zst")):
         #         print("Downloading shard 0 of the Pile dataset (requires 50GB of disk space).")
@@ -315,7 +320,6 @@ if __name__ == "__main__":
         # dataset_dict.save_to_disk(dataset_path)
         # print(f"chunk {num_chunks} saved to {save_path}")
         # print(f"Updated dataset for {split_name} split at {dataset_path}")
-
 
 
 

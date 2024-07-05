@@ -1,5 +1,8 @@
+<<<<<<< HEAD
 # to generate the data, you need to run 
 # from src.utils.generate_activation_data import GenerateActivationData
+=======
+>>>>>>> c4b9670c3119ab8db266bc29e31cfaf801b2350d
 from typing import Any, Dict, Optional, Tuple
 
 import hydra
@@ -66,13 +69,19 @@ class ReadActivationFromFileDataModule(LightningDataModule):
         if not self.data_train and not self.data_val and not self.data_test:
             generator = torch.Generator().manual_seed(self.hparams.seed)
             dataset = self.__load_dataset(self.hparams.path)
+<<<<<<< HEAD
             if isinstance(dataset, Dataset):
+=======
+            if len(dataset.keys()) < 3: 
+                dataset = dataset[list(dataset.keys())[0]]
+>>>>>>> c4b9670c3119ab8db266bc29e31cfaf801b2350d
                 self.data_train, self.data_val, self.data_test = random_split(
                     dataset=dataset,
                     lengths=self.hparams.train_val_test_split,
                     generator=generator,
                 )
             else:
+<<<<<<< HEAD
                 if len(dataset.keys()) < 3: 
                     dataset = dataset[list(dataset.keys())[0]]
                     self.data_train, self.data_val, self.data_test = random_split(
@@ -84,6 +93,11 @@ class ReadActivationFromFileDataModule(LightningDataModule):
                     self.data_train = dataset['train']
                     self.data_val = dataset['validation']
                     self.data_test = dataset['test']
+=======
+                self.data_train = dataset['train']
+                self.data_val = dataset['validation']
+                self.data_test = dataset['test']
+>>>>>>> c4b9670c3119ab8db266bc29e31cfaf801b2350d
     
 
     def __load_dataset(self, data_dir: str) -> Dataset:
@@ -146,9 +160,15 @@ class ReadActivationFromFileDataModule(LightningDataModule):
         """Load the dataset from a single file.
         """
         try:
+<<<<<<< HEAD
             dataset = Dataset.load_from_disk(data_dir)
         except:
             dataset = DatasetDict.load_from_disk(data_dir)
+=======
+            dataset = Dataset.load_from_disk(data_dir + "/final")
+        except:
+            dataset = DatasetDict.load_from_disk(data_dir + "/final")
+>>>>>>> c4b9670c3119ab8db266bc29e31cfaf801b2350d
         return dataset
 
     def train_dataloader(self) -> DataLoader[Any]:

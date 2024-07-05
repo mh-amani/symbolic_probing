@@ -9,8 +9,7 @@ import hydra
 from blocks.modules.auto_reg_wrapper import AutoRegWrapper
 from blocks.unwrapped_models.enc_dec_unwrapper import Unwrappedbart
 from transformers import AutoTokenizer, BertModel
-from transformer_lens import HookedTransformer
-import code
+
 
 class EncDecEncModel(LightningModule):
     """a wrapper connecting two sequence models with discrete bottleneck layers
@@ -25,54 +24,34 @@ class EncDecEncModel(LightningModule):
     ) -> None:
 
         super().__init__()
+
         # this line allows to access init params with 'self.hparams' attribute
         # also ensures init params will be stored in ckpt
         self.save_hyperparameters(logger=False, ignore=[])
-        if self.hparams.trainer_accelerator == 'cpu':
-            self.hparams.device = 'cpu'
-        else:
-            try:
-                trainer_device = self.hparams.trainer_devices[0]
-                self.hparams.device = 'cuda:' + str(trainer_device)
-            except:
-                self.hparams.device = 'cuda:0'
-                print('No GPU device list found, using cuda:0')
-
-        self.probed_model = HookedTransformer.from_pretrained(self.hparams.probed_model_name, device=self.hparams.device)
-
-        self.activation_embedding_to_encoder = torch.nn.Linear(self.probed_model.cfg.d_model,
-                                                                    self.hparams.encdec_config.d_model)
-        self.encoder_to_activation_embedding = torch.nn.Linear(self.hparams.encdec_config.d_model,
-                                                                    self.probed_model.cfg.d_model)
-        encdec_vector_model, encoder_embedding, _, _ = Unwrappedbart(
-                hydra.utils.instantiate(self.hparams.encdec_config, vocab_size=self.probed_model.tokenizer.vocab_size))
+        
+        self.encdec_vector_model, self.encoder_embedding_weight, self.decoder_embedding_weight, \
+                                self.linearhead_weight, self.linearhead_bias = Unwrappedbart(hydra.utils.instantiate(self.hparams.encdec_config))
         self.enc_model = BertModel(hydra.utils.instantiate(self.hparams.enc_config))
-        
-        
-        # initializing the discretizers
-        # self.hparams.probe_discretizer_config['encoder_embedding_weight']= probe_encoder_embedding_weight
-        probe_encoder_embedding = self.enc_model.get_input_embeddings()
-        self.hparams.probe_discretizer_config['decoder_embedding']= None
-        self.hparams.probe_discretizer_config['linear_head']= None
+        probe_encoder_embedding_weight = self.enc_model.get_input_embeddings().weight
+
         self.probe_discretizer = hydra.utils.instantiate(self.hparams.probe_discretizer, {**self.hparams.probe_discretizer_config,
-                                                        'encoder_embedding': probe_encoder_embedding})
+            **{'encoder_embedding_weight': probe_encoder_embedding_weight, \
+                'decoder_embedding_weight': self.decoder_embedding_weight, 
+                'linear_head_weight': self.linearhead_weight, 'linear_head_bias': self.linearhead_bias}} )
+        self.input_dicsretizer = hydra.utils.instantiate(self.hparams.input_discretizer, 
+                                                         {**self.hparams.input_discretizer_config, 
+                                                          'encoder_embedding_weight': self.encoder_embedding_weight})
         
-        self.hparams.input_discretizer_config.dimensions['vocab_size'] = self.probed_model.tokenizer.vocab_size
-        self.hparams.input_discretizer_config.dimensions['unembedding_dim'] = self.probed_model.tokenizer.vocab_size
-        self.input_dicsretizer = hydra.utils.instantiate(self.hparams.input_discretizer, {**self.hparams.input_discretizer_config,
-                                                                                        'encoder_embedding': encoder_embedding})
-    
-        # self.input_tokenizer = AutoTokenizer.from_pretrained(self.hparams.input_tokenizer_name)
-        self.input_tokenizer = self.probed_model.tokenizer
-        self.tokenizer_config = {'control_token_ids': { 'input_pad_token_id': self.input_tokenizer.pad_token_id,
+        self.input_tokenizer = AutoTokenizer.from_pretrained(self.hparams.input_tokenizer_name)
+        config = {'control_token_ids': { 'input_pad_token_id': self.input_tokenizer.pad_token_id,
                                     'output_eos_token_id': self.input_tokenizer.eos_token_id, 
                                     'output_pad_token_id': self.input_tokenizer.pad_token_id,
                                     'output_unknown_token_id': self.input_tokenizer.unk_token_id,},
                 'output_prepending_ids': torch.tensor(self.input_tokenizer.bos_token_id)
             }
-        self.autoreg_wrapped_encdec_model = AutoRegWrapper(encdec_vector_model, self.input_dicsretizer, 
-                                                           self.probe_discretizer, config={**self.hparams.autoreg_wrapper_config,
-                                                                                           **self.tokenizer_config, 'device': self.hparams.device})
+        self.autoreg_wrapped_encdec_model = AutoRegWrapper(self.encdec_vector_model, self.input_dicsretizer, 
+                                                           self.probe_discretizer, config={**config,
+                                                                                           **self.hparams.autoreg_wrapper_config})
 
         # loss function
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -81,8 +60,8 @@ class EncDecEncModel(LightningModule):
         # self.val_acc = Accuracy(task="multiclass", num_classes=10)
         # self.test_acc = Accuracy(task="multiclass", num_classes=10)
         # # for averaging loss across batches
-        self.train_loss = MeanMetric()
-        self.val_loss = MeanMetric()
+        # self.train_loss = MeanMetric()
+        # self.val_loss = MeanMetric()
         # self.test_loss = MeanMetric()
         # # for tracking best so far validation accuracy
         # self.val_acc_best = MaxMetric()
@@ -93,24 +72,18 @@ class EncDecEncModel(LightningModule):
         :param x: A tensor of input data. size: [batch_size, sequence_length, num_features]
         :return: A tensor of logits.
         """
-        (input_token_embeds, activations_embeds, attention_mask) = x
-        activations_embeds_transformed = self.activation_embedding_to_encoder(activations_embeds)
-        input_token_embeds[:, 0] = activations_embeds_transformed
-        symbolic_representation = self.autoreg_wrapped_encdec_model(input_embeds_enc=input_token_embeds, input_attention_mask=attention_mask,
-                                            max_output_length=None)
-        encoder_output = self.enc_model(inputs_embeds=symbolic_representation['quantized_vector_encoder'], attention_mask=symbolic_representation['output_attention_mask'])['last_hidden_state']
-        reconstructed_x = self.encoder_to_activation_embedding(encoder_output.mean(axis=1))
-        loss = torch.nn.functional.mse_loss(reconstructed_x, activations_embeds)
-        return reconstructed_x, loss
+        y = self.autoreg_wrapped_encdec_model(x)
+        discretized_y = self.probe_discretizer(y)
+        reconstructed_x = self.enc_model(discretized_y['encoder_hidden_states'])
+        return y, discretized_y, reconstructed_x
 
     def on_train_start(self) -> None:
         """Lightning hook that is called when training begins."""
         # by default lightning executes validation step sanity checks before training starts,
         # so it's worth to make sure validation metrics don't store results from these checks
         self.val_loss.reset()
-        self.probed_model.eval()
-        # self.val_acc.reset()
-        # self.val_acc_best.reset()
+        self.val_acc.reset()
+        self.val_acc_best.reset()
 
     def model_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor]
@@ -124,28 +97,11 @@ class EncDecEncModel(LightningModule):
             - A tensor of predictions.
             - A tensor of target labels.
         """
-        x = batch['tokens']
-        with torch.no_grad():
-            (probed_logits, probed_loss), cache = self.probed_model.run_with_cache(x, return_type='both')
-            activations = cache[self.hparams.probed_layer]
-            # to decode and compare the logits and see how the predictions look like
-            # self.probed_model.tokenizer.decode(probed_logits.argmax(dim=-1)[0]) 
-            # probed_model.tokenizer.decode(logits.argmax(dim=-1)[0]) 
-            # randomly choosing one token at each row to be the target
-            mask = torch.randint(1, x.size(1), (x.size(0),)).unsqueeze(1).expand(-1, x.size(1)).to(x)
-            # masking all the tokens appearing after the target token
-            mask_embeds = mask >= torch.arange(x.size(1),).unsqueeze(0).to(x)
-            mask_eos = mask == torch.arange(x.size(1),).unsqueeze(0).to(x)
-            # getting the embeddings of the target tokens
-            activations_embeds = activations[mask_eos, :]
-            filtered_tokens = x * mask_embeds + self.input_tokenizer.pad_token_id * (~mask_embeds)
-            input_token_embeds = self.input_dicsretizer.encoder_embedding_from_id(filtered_tokens)
-
-        reconstruction, reconstruction_loss = self.forward((input_token_embeds, activations_embeds, mask_embeds))
-        
-        loss = reconstruction_loss # + self.disc_loss_coeff 
-
-        return loss, reconstruction
+        x, y = batch
+        logits, disc_loss = self.forward(x)
+        loss = self.criterion(logits, y) + self.disc_loss_coeff * disc_loss
+        preds = torch.argmax(logits, dim=1)
+        return loss, disc_loss, preds, y
 
     def training_step(
         self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int
@@ -157,15 +113,14 @@ class EncDecEncModel(LightningModule):
         :param batch_idx: The index of the current batch.
         :return: A tensor of losses between model predictions and targets.
         """
-        loss, reconstruction = self.model_step(batch)
-        self.log("train/loss", loss, on_step=True, prog_bar=True)
+        loss, disc_loss, preds, targets = self.model_step(batch)
 
         # update and log metrics
         self.train_loss(loss)
-        # self.train_acc(preds, targets)
-        # self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("train/disc_loss", disc_loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.train_acc(preds, targets)
+        self.log("train/loss", self.train_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/disc_loss", disc_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("train/acc", self.train_acc, on_step=False, on_epoch=True, prog_bar=True)
 
         # return loss or backpropagation will fail
         return loss
@@ -185,18 +140,22 @@ class EncDecEncModel(LightningModule):
             labels.
         :param batch_idx: The index of the current batch.
         """
-        loss, reconstruction = self.model_step(batch)
-        self.val_loss(loss)
+        loss, disc_loss, preds, targets = self.model_step(batch)
+
         # update and log metrics
-        self.log("val/loss", self.val_loss, on_step=True, prog_bar=True)
+        self.val_loss(loss)
+        self.val_acc(preds, targets)
+        self.log("val/loss", self.val_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/disc_loss", disc_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("val/acc", self.val_acc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_validation_epoch_end(self) -> None:
         "Lightning hook that is called when a validation epoch ends."
-        pass
-        # acc = self.val_acc.compute()  # get current val acc
-        # self.val_acc_best(acc)  # update best so far val acc
+        acc = self.val_acc.compute()  # get current val acc
+        self.val_acc_best(acc)  # update best so far val acc
         # log `val_acc_best` as a value through `.compute()` method, instead of as a metric object
         # otherwise metric would be reset by lightning after each epoch
+        self.log("val/acc_best", self.val_acc_best.compute(), sync_dist=True, prog_bar=True)
 
     def test_step(self, batch: Tuple[torch.Tensor, torch.Tensor], batch_idx: int) -> None:
         """Perform a single test step on a batch of data from the test set.
@@ -205,15 +164,14 @@ class EncDecEncModel(LightningModule):
             labels.
         :param batch_idx: The index of the current batch.
         """
-        loss, reconstruction = self.model_step(batch)
+        loss, disc_loss, preds, targets = self.model_step(batch)
 
         # update and log metrics
-        self.log("test/loss", loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.test_loss(loss)
-        # self.test_acc(preds, targets)
-        # self.log("test/loss", self.test_loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("test/disc_loss", disc_loss, on_step=False, on_epoch=True, prog_bar=True)
-        # self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
+        self.test_loss(loss)
+        self.test_acc(preds, targets)
+        self.log("test/loss", self.test_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/disc_loss", disc_loss, on_step=False, on_epoch=True, prog_bar=True)
+        self.log("test/acc", self.test_acc, on_step=False, on_epoch=True, prog_bar=True)
 
     def on_test_epoch_end(self) -> None:
         """Lightning hook that is called when a test epoch ends."""
@@ -276,14 +234,3 @@ if __name__ == "__main__":
 #                                             **self.hparams.modules.config_z_to_x,
 #                                             special_tokens_ids=self.special_tokens_ids, _recursive_ = False)
 
-
-# # code to check if all params are on device
-# self.trainer.optimizers[0].param_groups[0]['params']
-# for param in self.trainer.optimizers[0].param_groups[0]['params']:
-#     if not param.device == torch.device('cuda:0'):
-#         print(param.device)
-#         print(param.requires_grad)
-#         print(param.dtype)
-#         print(param.shape)
-#         # print(param)
-#         print('-----------------')

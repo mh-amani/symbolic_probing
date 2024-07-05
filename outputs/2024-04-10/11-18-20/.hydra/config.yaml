@@ -1,0 +1,13 @@
+_target_: src.data.pvr_datamodule.PVRDataModule
+batch_size: 128
+train_val_test_split:
+- 55000
+- 5000
+- 10000
+num_workers: 0
+pin_memory: false
+seed: 0
+pointer_size: 1
+agg_func: sum_mod_10
+window_size: 3
+trim_window: false
