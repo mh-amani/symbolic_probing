@@ -1,6 +1,6 @@
 <div align="center">
 
-# neural discrete reasoning
+# symbolic_probing
 <!-- 
 [![Paper](http://img.shields.io/badge/paper-arxiv.1001.2234-B31B1B.svg)](https://www.nature.com/articles/nature14539)
 [![Conference](http://img.shields.io/badge/AnyConference-year-4b44ce.svg)](https://papers.nips.cc/paper/2020) -->
@@ -17,12 +17,12 @@ What it does...
 
 ```bash
 # clone project
-git clone https://github.com/mh-amani/neural_discrete_reasoning
-cd neural_discrete_reasoning
+git clone https://github.com/mh-amani/symbolic_probing
+cd symbolic_probing
 
 # [OPTIONAL] create conda environment
-conda create -n ndr python=3.11
-conda activate ndr
+conda create -n symbolic_probing python=3.11
+conda activate symbolic_probing
 
 # install pytorch according to instructions
 # https://pytorch.org/get-started/
@@ -35,14 +35,14 @@ pip install -r requirements.txt
 
 ```bash
 # clone project
-git clone https://github.com/mh-amani/neural_discrete_reasoning
-cd neural_discrete_reasoning
+git clone https://github.com/mh-amani/symbolic_probing
+cd symbolic_probing
 
 # create conda environment and install dependencies
-conda env create -f environment.yaml -n ndr
+conda env create -f environment.yaml -n symbolic_probing
 
 # activate conda environment
-conda activate ndr
+conda activate symbolic_probing
 ```
 
 ## How to run

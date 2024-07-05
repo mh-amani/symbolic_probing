@@ -1,0 +1,20 @@
+# # @package _global_
+# defaults:
+#   - _self_
+#   - default
+
+_target_: src.data.read_activation_from_file_datamodule.ReadActivationFromFileDataModule
+
+# format: 'chunks' # 'chunks' or 'one_file' or other
+# max_num_chunks: 1 # Number of chunks to read. If -1, read all chunks
+format: 'one_file'
+# path: /dlabdata1/masani/symbolic_probing/data/activation_data/gelu-2l_blocks.1.hook_mlp_out
+path: /dlabdata1/masani/symbolic_probing/data/tokenized_and_chopped_datasets/pile
+
+batch_size: 64  # Needs to be divisible by the number of devices (e.g., if in a distributed setup)
+num_workers: 10
+pin_memory: False
+seed: 42 # ${seed}
+train_val_test_split: [0.8, 0.1, 0.1]
+
+

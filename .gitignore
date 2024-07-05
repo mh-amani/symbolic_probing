@@ -147,7 +147,10 @@ dmypy.json
 # Lightning-Hydra-Template
 configs/local/default.yaml
 /data/
+/symbolic_probing/
 /logs/
+/None/
+/outputs/
 src/data/outputs/
 .env
 **/.DS_Store
